@@ -1,34 +1,55 @@
-var minify = Npm.require('html-minifier').minify;
-var jade = Npm.require('jade');
-var jadeOpts = {pretty:true, compileDebug:false};
+const minify = Npm.require('html-minifier').minify;
+const pug = Npm.require('pug');
 
-Plugin.registerSourceHandler('ng.jade', {
-  isTemplate: true,
+Plugin.registerCompiler({
+  extensions: ['ng.jade', 'ng.pug'],
   archMatching: 'web'
-}, function(compileStep) {
-  var contents = compileStep.read().toString('utf8');
-  jadeOpts.filename = compileStep.fullInputPath;
-  contents = jade.compile(contents, jadeOpts)();
+}, function() {
+    return {
+        processFilesForTarget(inputFiles) {
+            for (const inputFile of inputFiles) {
+              if (inputFile.supportsLazyCompilation) {
+                inputFile.addJavaScript({
+                  path: inputFile.getPathInPackage(),
+                  hash: inputFile.getSourceHash(),
+                }, () => this.processOneFileForTarget(inputFile));
+              } else {
+                const toBeAdded = this.processOneFileForTarget(inputFile);
+                if (toBeAdded) {
+                  inputFile.addJavaScript(toBeAdded);
+                }
+              }
+            }
+        },
+        processOneFileForTarget(inputFile) {
+          let contents = inputFile.getContentsAsString();
+          const pugOpts = { pretty:true, compileDebug:false };
+          pugOpts.filename = inputFile.getBasename();
+          contents = pug.compile(contents, pugOpts)();
 
-  var newPath = compileStep.inputPath;
-  newPath = newPath.replace(/\\/g, "/");
-  newPath = newPath.replace(".ng.jade", ".html");
+          let newPath = inputFile.getPathInPackage();
+          newPath = newPath.replace(/\\/g, "/");
+          newPath = newPath.replace(".ng.jade", ".html");
+          newPath = newPath.replace(".ng.pug", ".html");
 
-  var results = 'angular.module(\'angular-meteor\').run([\'$templateCache\', function($templateCache) {' +
-    '$templateCache.put(\'' + newPath + '\', \'' +
-      minify(contents.replace(/'/g, "\\'"), {
-        collapseWhitespace : true,
-        conservativeCollapse : true,
-        removeComments : true,
-        minifyJS : true,
-        minifyCSS: true,
-        processScripts : ['text/ng-template']
-      }) + '\');' +
-    '}]);';
+          const data = 'angular.module(\'ng\').run([\'$templateCache\', function($templateCache) {' +
+              '$templateCache.put(\'' + newPath + '\', \'' +
+              minify(contents.replace(/'/g, "\\'"), {
+                  collapseWhitespace : true,
+                  conservativeCollapse : true,
+                  removeComments : true,
+                  minifyJS : true,
+                  minifyCSS: true,
+                  processScripts : ['text/ng-template']
+              }) + '\');' +
+              '}]);'.replace(/\n/g, '\\n');
 
-  compileStep.addJavaScript({
-    path : newPath,
-    data : results.replace(/\n/g, '\\n'),
-    sourcePath : compileStep.inputPath
-  });
+          return {
+            path : newPath,
+            hash: inputFile.getSourceHash(),
+            sourcePath : inputFile.getPathInPackage(),
+            data
+          };
+        }
+    }
 });
