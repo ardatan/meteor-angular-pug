@@ -1,7 +1,7 @@
 Package.describe({
   name: "ardatan:angular-pug",
   summary: "Jade templating for Meteor-Angular",
-  version: "0.0.4",
+  version: "0.0.6",
   git: "https://github.com/ardatan/meteor-angular-pug.git"
 });
 
